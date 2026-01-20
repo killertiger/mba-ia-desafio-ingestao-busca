@@ -5,6 +5,9 @@
 ### Configuração
 
 Crie uma cópia do arquivo `.env.example` com o nome `.env`
+```bash
+cp .env.example .env
+```
 
 Altere as seguinte chaves com as keys da OpenIA e Gemini:
 - OPENAI_API_KEY
