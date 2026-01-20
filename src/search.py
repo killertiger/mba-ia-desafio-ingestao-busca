@@ -1,9 +1,17 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_postgres import PGVector
 from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_core.runnables import RunnableLambda
+
+from db import get_db
+from envs import (
+    GOOGLE_MODEL,
+    OPENAI_MODEL,
+    ACTIVE_CHAT_PROVIDER,
+)
 
 load_dotenv()
 
@@ -34,46 +42,32 @@ PERGUNTA DO USUÁRIO:
 RESPONDA A "PERGUNTA DO USUÁRIO"
 """
 
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "gpt-5-nano")
-PG_VECTOR_COLLECTION_NAME = os.getenv("PGVECTOR_COLLECTION", "documents")
-DATABASE_URL = os.getenv("DATABASE_URL")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-nano")
+def get_chat_model():
+    if ACTIVE_CHAT_PROVIDER == "google":
+        return ChatGoogleGenerativeAI(model=GOOGLE_MODEL, temperature=0.7)
+    else:
+        return ChatOpenAI(model=OPENAI_MODEL, temperature=0.7)
 
 
 def search_prompt(question=None):
-    embeddings = OpenAIEmbeddings(model=OPENAI_EMBEDDING_MODEL)
+    store = get_db()
 
-    store = PGVector(
-        embeddings=embeddings,
-        collection_name=PG_VECTOR_COLLECTION_NAME,
-        connection=DATABASE_URL,
-        use_jsonb=True,
-    )
-
+    # print(f"Searching for relevant documents for question: {question}")
     results = store.similarity_search_with_score(question, k=10)
 
-    formatted_result = "\n\n".join(
-        [doc.page_content for doc, score in results]
-    )
+    formatted_result = "\n\n".join([doc.page_content for doc, score in results])
+    # print("Formatted Result:", formatted_result)
 
     question_template = PromptTemplate(
         input_variables=["contexto", "pergunta"],
         template=PROMPT_TEMPLATE,
+        partial_variables={
+            "contexto": formatted_result,
+        },
     )
 
-    model = ChatOpenAI(model=OPENAI_MODEL, temperature=0.7)
+    model = get_chat_model()
 
     chain = question_template | model
 
-    return chain.invoke({"contexto": formatted_result, "pergunta": question})
-
-    # return {"contexto": formatted_result, "pergunta": question} | question_template | model
-
-    # text = template.format(contexto=formatted_result, pergunta=question)
-
-    # return text
-
-    
-    # result = model.invoke(text)
-
-    # return result.content
+    return chain
